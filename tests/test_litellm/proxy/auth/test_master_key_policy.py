@@ -27,3 +27,13 @@ def test_insecure_master_key_warning_only_for_example_key():
     assert insecure_master_key_warning(master_key="sk-1234") is not None
     assert insecure_master_key_warning(master_key="sk-strong-random-key") is None
     assert insecure_master_key_warning(master_key=None) is None
+
+
+def test_remediation_hint_survives_log_redaction():
+    from litellm.litellm_core_utils.secret_redaction import redact_string
+
+    error = insecure_master_key_error(master_key="sk-1234", allow_insecure=False)
+    warning = insecure_master_key_warning(master_key="sk-1234")
+    assert error is not None and warning is not None
+    assert "LITELLM_ALLOW_INSECURE_MASTER_KEY" in redact_string(error)
+    assert "LITELLM_ALLOW_INSECURE_MASTER_KEY" in redact_string(warning)
