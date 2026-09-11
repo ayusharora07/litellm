@@ -1,4 +1,5 @@
 use super::super::OcrAdapter;
+use super::validate_destination;
 use crate::Error;
 use crate::auth::vertex::{self, VertexConfig};
 use crate::ocr::OcrClient;
@@ -25,6 +26,7 @@ impl OcrAdapter for VertexMistralAdapter {
         request: &LiteLLMOcrRequest,
         client: &OcrClient,
     ) -> Result<reqwest::Request, OcrError> {
+        validate_destination(&request.connection)?;
         let ParsedProviderParams {
             known: params,
             extra_params: _extra_params,
