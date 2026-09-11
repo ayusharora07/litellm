@@ -3,6 +3,7 @@
 import asyncio
 import copy
 import inspect
+import os
 import warnings
 
 import pytest
@@ -10,6 +11,8 @@ import pytest
 
 import litellm
 import litellm.proxy.proxy_server
+
+os.environ.setdefault("LITELLM_ALLOW_INSECURE_MASTER_KEY", "true")
 
 
 # Top-level assignments of these types are the ones importlib.reload(litellm)

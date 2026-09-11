@@ -96,6 +96,7 @@ def google_genai_proxy_url() -> Iterator[str]:
     os.environ.pop("DATABASE_URL", None)
     os.environ.pop("DIRECT_URL", None)
     os.environ["LITELLM_MASTER_KEY"] = PROXY_MASTER_KEY
+    os.environ["LITELLM_ALLOW_INSECURE_MASTER_KEY"] = "true"
     os.environ["STORE_MODEL_IN_DB"] = "False"
 
     if has_vertex_credentials():

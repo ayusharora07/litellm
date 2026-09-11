@@ -878,6 +878,29 @@ def test_proxy_startup_event_warns_for_global_budget_without_database():
     )
 
 
+async def test_proxy_startup_event_refuses_docs_example_master_key(monkeypatch):
+    monkeypatch.setenv("LITELLM_MASTER_KEY", "sk-1234")
+    monkeypatch.delenv("LITELLM_ALLOW_INSECURE_MASTER_KEY", raising=False)
+
+    with pytest.raises(ValueError, match="example key 'sk-1234'"):
+        async with proxy_startup_event(app=None):
+            pass
+
+
+async def test_proxy_startup_event_allows_docs_example_master_key_with_escape_hatch(monkeypatch):
+    monkeypatch.setenv("LITELLM_MASTER_KEY", "sk-1234")
+    monkeypatch.setenv("LITELLM_ALLOW_INSECURE_MASTER_KEY", "true")
+
+    try:
+        async with proxy_startup_event(app=None):
+            pass
+    except ValueError as e:
+        if "example key 'sk-1234'" in str(e):
+            pytest.fail("startup refused sk-1234 despite LITELLM_ALLOW_INSECURE_MASTER_KEY=true")
+    except Exception:
+        pass
+
+
 @pytest.mark.asyncio
 async def test_tuning_baseline_v2_is_created_alongside_the_legacy_row():
     from litellm.router_utils.auto_router_tuning_baseline import DEFAULT_TUNING_FINGERPRINT
