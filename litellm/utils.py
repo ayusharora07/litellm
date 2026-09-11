@@ -1648,8 +1648,17 @@ def client(original_function):
 
             verbose_logger.info("Wrapper: Completed Call, calling success_handler")
             completion.success(result, start_time, end_time)
-            completion.release()
             # RETURN RESULT
+            update_response_metadata = getattr(sys.modules[__name__], "update_response_metadata")
+            update_response_metadata(
+                result=result,
+                logging_obj=logging_obj,
+                model=model,
+                kwargs=kwargs,
+                start_time=start_time,
+                end_time=end_time,
+            )
+            completion.release()
             return result
         except Exception as e:
             call_type = original_function.__name__
@@ -1927,27 +1936,20 @@ def client(original_function):
             )
 
             completion.success(result, start_time, end_time)
-            completion.release()
             # REBUILD EMBEDDING CACHING
             if (
                 isinstance(result, EmbeddingResponse)
                 and _caching_handler_response is not None
                 and _caching_handler_response.final_embedding_cached_response is not None
             ):
-                _dispatch_success_logging(
-                    logging_obj=logging_obj,
-                    result=result,
-                    start_time=start_time,
-                    end_time=end_time,
-                    is_completion_with_fallbacks=is_completion_with_fallbacks,
-                    is_litellm_internal_call=_is_litellm_internal_call,
-                )
-                return _llm_caching_handler._combine_cached_embedding_response_with_api_result(
+                combined_response: Final = _llm_caching_handler._combine_cached_embedding_response_with_api_result(
                     _caching_handler_response=_caching_handler_response,
                     embedding_response=result,
                     start_time=start_time,
                     end_time=end_time,
                 )
+                completion.release()
+                return combined_response
 
             _update_response_metadata(
                 result=result,
@@ -1957,15 +1959,8 @@ def client(original_function):
                 start_time=start_time,
                 end_time=end_time,
             )
-            _dispatch_success_logging(
-                logging_obj=logging_obj,
-                result=result,
-                start_time=start_time,
-                end_time=end_time,
-                is_completion_with_fallbacks=is_completion_with_fallbacks,
-                is_litellm_internal_call=_is_litellm_internal_call,
-            )
 
+            completion.release()
             return result
         except Exception as e:
             traceback_exception: Final = traceback.format_exc()
