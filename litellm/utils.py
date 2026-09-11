@@ -1658,7 +1658,6 @@ def client(original_function):
                 start_time=start_time,
                 end_time=end_time,
             )
-            completion.release()
             return result
         except Exception as e:
             call_type = original_function.__name__
@@ -1733,13 +1732,13 @@ def client(original_function):
 
             # LOG FAILURE - handle streaming failure logging in the _next_ object, remove `handle_failure` once it's deprecated
             if completion is not None:
-                try:
-                    completion.failure(e, traceback_exception, start_time, end_time)
-                finally:
-                    completion.release()
+                completion.failure(e, traceback_exception, start_time, end_time)
             elif logging_obj:
                 logging_obj.failure_handler(e, traceback_exception, start_time, end_time)
             raise e
+        finally:
+            if completion is not None:
+                completion.release()
 
     @wraps(original_function)
     async def wrapper_async(*args, **kwargs):
@@ -1942,14 +1941,12 @@ def client(original_function):
                 and _caching_handler_response is not None
                 and _caching_handler_response.final_embedding_cached_response is not None
             ):
-                combined_response: Final = _llm_caching_handler._combine_cached_embedding_response_with_api_result(
+                return _llm_caching_handler._combine_cached_embedding_response_with_api_result(
                     _caching_handler_response=_caching_handler_response,
                     embedding_response=result,
                     start_time=start_time,
                     end_time=end_time,
                 )
-                completion.release()
-                return combined_response
 
             _update_response_metadata(
                 result=result,
@@ -1960,7 +1957,6 @@ def client(original_function):
                 end_time=end_time,
             )
 
-            completion.release()
             return result
         except Exception as e:
             traceback_exception: Final = traceback.format_exc()
@@ -1968,16 +1964,8 @@ def client(original_function):
             # the failure hook ran, so a slow callback doesn't inflate the reported duration.
             end_time = _deployment_call_end_time if _deployment_call_end_time is not None else datetime.datetime.now()  # noqa: DTZ005  # matches the naive datetimes this whole function already times start_time/end_time with
             if completion is not None:
-                try:
-                    completion.failure(e, traceback_exception, start_time, end_time)
-                except Exception as e:
-                    raise e
-                try:
-                    await completion.async_failure(e, traceback_exception, start_time, end_time)
-                except Exception as e:
-                    raise e
-                finally:
-                    completion.release()
+                completion.failure(e, traceback_exception, start_time, end_time)
+                await completion.async_failure(e, traceback_exception, start_time, end_time)
             elif logging_obj and not _is_litellm_internal_call:
                 logging_obj.failure_handler(e, traceback_exception, start_time, end_time)
                 await logging_obj.async_failure_handler(e, traceback_exception, start_time, end_time)
@@ -2050,6 +2038,8 @@ def client(original_function):
             raise e
 
         finally:
+            if completion is not None:
+                completion.release()
             # Restore trace_id/session_id contextvars to their pre-call value once
             # this call (in this asyncio Task) is fully done - see
             # request_correlation_in_logs. Unlike wrapper()'s sync path, it's safe to
