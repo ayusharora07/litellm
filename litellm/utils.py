@@ -1647,6 +1647,7 @@ def client(original_function):
 
             verbose_logger.info("Wrapper: Completed Call, calling success_handler")
             completion.success(result, start_time, end_time)
+            completion.release()
             # RETURN RESULT
             return result
         except Exception as e:
@@ -1723,7 +1724,10 @@ def client(original_function):
 
             # LOG FAILURE - handle streaming failure logging in the _next_ object, remove `handle_failure` once it's deprecated
             if completion is not None:
-                completion.failure(e, traceback_exception, start_time, end_time)
+                try:
+                    completion.failure(e, traceback_exception, start_time, end_time)
+                finally:
+                    completion.release()
             elif logging_obj:
                 logging_obj.failure_handler(e, traceback_exception, start_time, end_time)
             raise e
@@ -1923,6 +1927,7 @@ def client(original_function):
             )
 
             completion.success(result, start_time, end_time)
+            completion.release()
             # REBUILD EMBEDDING CACHING
             if (
                 isinstance(result, EmbeddingResponse)
@@ -1976,6 +1981,8 @@ def client(original_function):
                     await completion.async_failure(e, traceback_exception, start_time, end_time)
                 except Exception as e:
                     raise e
+                finally:
+                    completion.release()
             elif logging_obj and not _is_litellm_internal_call:
                 logging_obj.failure_handler(e, traceback_exception, start_time, end_time)
                 await logging_obj.async_failure_handler(e, traceback_exception, start_time, end_time)
