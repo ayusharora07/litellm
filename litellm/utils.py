@@ -1591,6 +1591,7 @@ def client(original_function):
                     print_verbose(f"Error while checking max token limit: {e}")
             # MODEL CALL
             result = original_function(*args, **kwargs)
+            kwargs.pop("_litellm_call_completion", None)
             end_time = datetime.datetime.now()
             if _is_streaming_request(
                 kwargs=kwargs,
@@ -1649,6 +1650,7 @@ def client(original_function):
             # RETURN RESULT
             return result
         except Exception as e:
+            kwargs.pop("_litellm_call_completion", None)
             call_type = original_function.__name__
             if call_type == CallTypes.completion.value:
                 num_retries = kwargs.get("num_retries", None) or litellm.num_retries or None
@@ -1856,7 +1858,9 @@ def client(original_function):
             # MODEL CALL
             try:
                 result = await original_function(*args, **kwargs)
+                kwargs.pop("_litellm_call_completion", None)
             except Exception as deployment_error:
+                kwargs.pop("_litellm_call_completion", None)
                 _deployment_call_end_time = datetime.datetime.now()  # noqa: DTZ005  # matches the naive datetimes this whole function already times start_time/end_time with
                 try:
                     await async_post_call_failure_deployment_hook(
