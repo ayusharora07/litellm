@@ -1587,10 +1587,12 @@ def client(original_function):
                 except Exception as e:
                     print_verbose(f"Error while checking max token limit: {e}")
             # MODEL CALL
-            if original_function.__name__ == CallTypes.ocr.value:
-                kwargs["_litellm_call_completion"] = completion
-            result = original_function(*args, **kwargs)
-            kwargs.pop("_litellm_call_completion", None)
+            invocation_kwargs: Final = (
+                {**kwargs, "_litellm_call_completion": completion}
+                if original_function.__name__ == CallTypes.ocr.value
+                else kwargs
+            )
+            result = original_function(*args, **invocation_kwargs)
             end_time = datetime.datetime.now()
             if _is_streaming_request(
                 kwargs=kwargs,
@@ -1650,7 +1652,6 @@ def client(original_function):
             # RETURN RESULT
             return result
         except Exception as e:
-            kwargs.pop("_litellm_call_completion", None)
             call_type = original_function.__name__
             if call_type == CallTypes.completion.value:
                 num_retries = kwargs.get("num_retries", None) or litellm.num_retries or None
@@ -1857,12 +1858,13 @@ def client(original_function):
 
             # MODEL CALL
             try:
-                if original_function.__name__ == CallTypes.aocr.value:
-                    kwargs["_litellm_call_completion"] = completion
-                result = await original_function(*args, **kwargs)
-                kwargs.pop("_litellm_call_completion", None)
+                invocation_kwargs: Final = (
+                    {**kwargs, "_litellm_call_completion": completion}
+                    if original_function.__name__ == CallTypes.aocr.value
+                    else kwargs
+                )
+                result = await original_function(*args, **invocation_kwargs)
             except Exception as deployment_error:
-                kwargs.pop("_litellm_call_completion", None)
                 _deployment_call_end_time = datetime.datetime.now()  # noqa: DTZ005  # matches the naive datetimes this whole function already times start_time/end_time with
                 try:
                     await async_post_call_failure_deployment_hook(
