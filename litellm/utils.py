@@ -1490,9 +1490,6 @@ def client(original_function):
                     completion_with_fallbacks=False,
                 )
             )
-            if original_function.__name__ == CallTypes.ocr.value:
-                kwargs["_litellm_call_completion"] = completion
-
             ## LOAD CREDENTIALS
             load_credentials_from_list(kwargs)
             kwargs["litellm_logging_obj"] = logging_obj
@@ -1590,6 +1587,8 @@ def client(original_function):
                 except Exception as e:
                     print_verbose(f"Error while checking max token limit: {e}")
             # MODEL CALL
+            if original_function.__name__ == CallTypes.ocr.value:
+                kwargs["_litellm_call_completion"] = completion
             result = original_function(*args, **kwargs)
             kwargs.pop("_litellm_call_completion", None)
             end_time = datetime.datetime.now()
@@ -1774,9 +1773,6 @@ def client(original_function):
                     completion_with_fallbacks=is_completion_with_fallbacks,
                 )
             )
-            if original_function.__name__ == CallTypes.aocr.value:
-                kwargs["_litellm_call_completion"] = completion
-
             modified_kwargs: Final = await async_pre_call_deployment_hook(kwargs, call_type)
             if modified_kwargs is not None:
                 kwargs = modified_kwargs
@@ -1861,6 +1857,8 @@ def client(original_function):
 
             # MODEL CALL
             try:
+                if original_function.__name__ == CallTypes.aocr.value:
+                    kwargs["_litellm_call_completion"] = completion
                 result = await original_function(*args, **kwargs)
                 kwargs.pop("_litellm_call_completion", None)
             except Exception as deployment_error:
