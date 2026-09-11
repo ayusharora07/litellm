@@ -1480,11 +1480,12 @@ def client(original_function):
 
             # Type assertion: logging_obj is guaranteed to be non-None after function_setup
             assert logging_obj is not None, "logging_obj should not be None after function_setup"
-            executor: Final = getattr(sys.modules[__name__], "executor")
+            from litellm.litellm_core_utils.thread_pool_executor import executor as logging_executor
+
             completion = CallCompletion(
                 PythonCompletion(
                     logging_obj,
-                    executor,
+                    logging_executor,
                     async_call=False,
                     internal_call=False,
                     completion_with_fallbacks=False,
@@ -1647,7 +1648,7 @@ def client(original_function):
             )
 
             verbose_logger.info("Wrapper: Completed Call, calling success_handler")
-            completion.success(result, start_time, end_time)
+            completion.notify_success(result, start_time, end_time)
             # RETURN RESULT
             update_response_metadata = getattr(sys.modules[__name__], "update_response_metadata")
             update_response_metadata(
@@ -1658,6 +1659,7 @@ def client(original_function):
                 start_time=start_time,
                 end_time=end_time,
             )
+            completion.finalize(result, start_time, end_time)
             return result
         except Exception as e:
             call_type = original_function.__name__
@@ -1934,13 +1936,14 @@ def client(original_function):
                 args=args,
             )
 
-            completion.success(result, start_time, end_time)
+            completion.notify_success(result, start_time, end_time)
             # REBUILD EMBEDDING CACHING
             if (
                 isinstance(result, EmbeddingResponse)
                 and _caching_handler_response is not None
                 and _caching_handler_response.final_embedding_cached_response is not None
             ):
+                completion.finalize(result, start_time, end_time)
                 return _llm_caching_handler._combine_cached_embedding_response_with_api_result(
                     _caching_handler_response=_caching_handler_response,
                     embedding_response=result,
@@ -1957,6 +1960,7 @@ def client(original_function):
                 end_time=end_time,
             )
 
+            completion.finalize(result, start_time, end_time)
             return result
         except Exception as e:
             traceback_exception: Final = traceback.format_exc()

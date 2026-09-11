@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Mapping
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
+from types import MappingProxyType
 from typing import Final, Protocol, cast  # noqa: TID251  # native extension exposes dynamically typed callables
 
 import httpx
@@ -15,6 +16,31 @@ from litellm.llms.azure_ai.ocr.common_utils import is_azure_cohere_parse_model
 from litellm.llms.base_llm.ocr.transformation import PROVIDER_NATIVE_RESPONSE_KEY, OCRResponse
 from litellm.rust_bridge.bindings import NativeBinding, native_exception_types
 from litellm.rust_bridge.timeouts import timeout_to_seconds as _timeout_to_seconds
+from litellm.types.router import GenericLiteLLMParams
+from litellm.utils import ProviderConfigManager
+
+_RUST_OCR_PROVIDERS: Final = frozenset({"mistral", "azure_ai", "vertex_ai"})
+_RUST_OCR_CONFIG_FIELDS: Final = frozenset(
+    {
+        "azure_ad_token",
+        "tenant_id",
+        "client_id",
+        "client_secret",
+        "azure_scope",
+        "azure_authority_host",
+        "azure_credential",
+        "azure_federated_token_file",
+        "vertex_credentials",
+        "vertex_ai_credentials",
+        "vertex_project",
+        "vertex_ai_project",
+        "vertex_location",
+        "vertex_ai_location",
+    }
+)
+_RUST_OCR_SECRET_FIELDS: Final = frozenset(
+    {"azure_ad_token", "client_secret", "azure_federated_token_file", "vertex_credentials", "vertex_ai_credentials"}
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,6 +87,26 @@ class RustAocr(Protocol):
         timeout_seconds: float | None,
     ) -> Awaitable[dict[str, object]]:
         raise NotImplementedError
+
+
+class _OCRLogging(Protocol):
+    def update_from_kwargs(
+        self,
+        *,
+        kwargs: dict[str, object],
+        model: str,
+        optional_params: dict[str, object],
+        litellm_params: dict[str, object],
+        custom_llm_provider: str | None,
+    ) -> None: ...
+
+    def pre_call(
+        self,
+        *,
+        input: str,
+        api_key: str | None,
+        additional_args: dict[str, object],
+    ) -> None: ...
 
 
 def _as_ocr(value: object) -> RustOcr | None:

@@ -51,6 +51,7 @@ class CompletionExecutor(Protocol):
     def submit(
         self,
         function: Callable[..., object],
+        /,
         *args: object,
     ) -> Future[object]: ...
 
@@ -211,6 +212,38 @@ class CallCompletion:
         implementation = self._implementation
         assert implementation is not None
         implementation.success(result, start_time, end_time)
+
+    def notify_success(
+        self,
+        result: object,
+        start_time: datetime.datetime,
+        end_time: datetime.datetime,
+    ) -> None:
+        """Fire an attached native lifecycle.
+
+        The retained Python logging lifecycle is not submitted here; a native
+        implementation that took over owns the full lifecycle.
+        """
+        if not self._attached:
+            return
+        implementation = self._implementation
+        assert implementation is not None
+        implementation.success(result, start_time, end_time)
+
+    def finalize(
+        self,
+        result: object,
+        start_time: datetime.datetime,
+        end_time: datetime.datetime,
+    ) -> None:
+        """Submit the retained Python logging lifecycle once response metadata is final.
+
+        A native implementation that took over the lifecycle owns logging, and a
+        released completion has nothing left to submit.
+        """
+        if self._attached or self._implementation is None:
+            return
+        self._implementation.success(result, start_time, end_time)
 
     def failure(
         self,
