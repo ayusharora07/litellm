@@ -17,6 +17,7 @@ use serde_json::{Map, Value};
 pub struct DecodedOcrResponse<T> {
     pub data: T,
     pub native: Option<Value>,
+    pub text: String,
 }
 
 #[derive(Deserialize)]
@@ -73,6 +74,7 @@ pub fn decode_request(wire: OcrWireRequest) -> Result<LiteLLMOcrRequest, Error> 
         wire.optional_params,
     )?;
     let connection = OcrConnection {
+        token_provider: None,
         api_key: nonblank(wire.api_key),
         api_key_source,
         api_base: nonblank(wire.api_base),
@@ -134,7 +136,11 @@ pub fn decode_response<T: DeserializeOwned>(
     } else {
         None
     };
-    Ok(DecodedOcrResponse { data, native })
+    Ok(DecodedOcrResponse {
+        data,
+        native,
+        text: String::from_utf8_lossy(bytes).into_owned(),
+    })
 }
 
 pub fn decode_pre_call_result(
@@ -150,7 +156,7 @@ pub fn decode_pre_call_result(
     let changed: Changed = decode_request_value(value, "guardrail")?;
     Ok(OcrPreCallRequest {
         document: changed.document,
-        optional_params: Value::Object(changed.optional_params),
+        optional_params: changed.optional_params,
         ..original
     })
 }

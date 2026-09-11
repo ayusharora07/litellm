@@ -275,7 +275,6 @@ def rust_chat_completions_accepts(
 
 
 def _rust_bridge_exceptions() -> tuple[type[BaseException], type[BaseException]] | None:
-    """`(declined, upstream_failed)` from the native module, or None when absent."""
     native_bridge: Final = get_native_bridge()
     if native_bridge is None:
         return None

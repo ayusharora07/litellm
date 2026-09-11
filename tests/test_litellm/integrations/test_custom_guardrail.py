@@ -535,13 +535,9 @@ class TestApplyGuardrailCheck:
         class ParentGuardrail(CustomGuardrail):
             """Parent that inherits apply_guardrail from CustomGuardrail"""
 
-            pass
-
         # Child class that only inherits apply_guardrail (doesn't override)
         class ChildGuardrailWithoutOverride(ParentGuardrail):
             """Child that only inherits apply_guardrail"""
-
-            pass
 
         # Child class that overrides apply_guardrail
         class ChildGuardrailWithOverride(ParentGuardrail):
@@ -2464,7 +2460,7 @@ class TestLoggingOnlyApplyGuardrail:
         from litellm.proxy.guardrails.guardrail_hooks.litellm_content_filter.content_filter import (
             ContentFilterGuardrail,
         )
-        from litellm.types.guardrails import BlockedWord, ContentFilterAction, GuardrailEventHooks
+        from litellm.types.guardrails import BlockedWord, ContentFilterAction
 
         guardrail: Final = ContentFilterGuardrail(
             guardrail_name="content-review",
@@ -2647,6 +2643,61 @@ class TestCustomGuardrailPostCallSuccessDeploymentHook:
     None made the utils.py dispatcher treat the guardrail as having modified the response,
     which starved every later callback in litellm.callbacks (notably the lazily-appended
     VectorStorePreCallHook that attaches provider_specific_fields["search_results"])."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("call_type", [CallTypes.aocr, CallTypes.aresponses, CallTypes.anthropic_messages])
+    async def test_explicit_call_type_scans_without_proxy_route(self, call_type: CallTypes) -> None:
+        from fastapi import HTTPException
+
+        from litellm.litellm_core_utils.guardrail_call_context import guardrail_call_type
+        from litellm.llms.base_llm.ocr.transformation import OCRResponse
+        from litellm.proxy.guardrails.guardrail_hooks.litellm_content_filter.content_filter import (
+            ContentFilterGuardrail,
+        )
+        from litellm.types.guardrails import BlockedWord, ContentFilterAction
+        from litellm.types.llms.openai import ResponsesAPIResponse
+
+        guardrail: Final = ContentFilterGuardrail(
+            guardrail_name="response-filter",
+            event_hook=GuardrailEventHooks.post_call,
+            blocked_words=[BlockedWord(keyword="secret", action=ContentFilterAction.BLOCK)],
+        )
+        response: Final = (
+            OCRResponse(pages=[{"index": 0, "markdown": "secret", "images": [], "dimensions": None}], model="model")
+            if call_type == CallTypes.aocr
+            else ResponsesAPIResponse(
+                id="resp_test",
+                created_at=0,
+                model="model",
+                object="response",
+                output=[
+                    {
+                        "id": "msg_test",
+                        "type": "message",
+                        "role": "assistant",
+                        "status": "completed",
+                        "content": [{"type": "output_text", "text": "secret", "annotations": []}],
+                    }
+                ],
+            )
+            if call_type == CallTypes.aresponses
+            else {
+                "id": "msg_test",
+                "type": "message",
+                "role": "assistant",
+                "model": "model",
+                "content": [{"type": "text", "text": "secret"}],
+                "stop_reason": "end_turn",
+                "usage": {"input_tokens": 1, "output_tokens": 1},
+            }
+        )
+        with pytest.raises(HTTPException, match="Content blocked"):
+            await guardrail.async_post_call_success_deployment_hook(
+                request_data={"guardrails": ["response-filter"]},
+                response=response,
+                call_type=call_type,
+            )
+        assert guardrail_call_type.get() is None
 
     @pytest.mark.asyncio
     async def test_apply_guardrail_retains_request_identity(self) -> None:

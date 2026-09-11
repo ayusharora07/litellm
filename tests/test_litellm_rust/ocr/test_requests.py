@@ -5,13 +5,13 @@ import pytest
 import litellm
 from litellm.llms.base_llm.ocr.transformation import OCRResponse
 from tests.test_litellm_rust.support.callback_recorder import RecordingLogger
+from tests.test_litellm_rust.support.recording_server import RecordingServer, ResponseSpec
 from tests.test_litellm_rust.support.requests import (
     OCR_DOCUMENT,
     OCR_RESPONSE,
     call_native_aocr,
     call_native_ocr,
 )
-from tests.test_litellm_rust.support.recording_server import RecordingServer, ResponseSpec
 
 pytestmark = pytest.mark.requires_rust_extension
 
@@ -149,7 +149,7 @@ def test_native_ocr_normalizes_provider_response_model_and_usage(ocr_server: Rec
     assert response.usage_info.pages_processed == 1
 
 
-def test_native_ocr_maps_provider_400_without_exposing_response_body(ocr_server: RecordingServer) -> None:
+def test_native_ocr_maps_provider_400_with_response_body(ocr_server: RecordingServer) -> None:
     ocr_server.enqueue(ResponseSpec(body={"message": "invalid OCR request"}, status=400))
 
     with pytest.raises(litellm.BadRequestError) as caught:
@@ -158,13 +158,13 @@ def test_native_ocr_maps_provider_400_without_exposing_response_body(ocr_server:
     assert caught.value.status_code == 400
     assert caught.value.model == "mistral-ocr-latest"
     assert caught.value.llm_provider == "mistral"
-    assert "invalid OCR request" not in str(caught.value)
+    assert "invalid OCR request" in str(caught.value)
 
 
 def test_native_ocr_raises_transport_error_when_request_exceeds_timeout(ocr_server: RecordingServer) -> None:
     ocr_server.enqueue(ResponseSpec(body=OCR_RESPONSE, delay=0.2))
 
-    with pytest.raises(RuntimeError, match="OCR transport failed"):
+    with pytest.raises(litellm.APIConnectionError, match="upstream network error"):
         call_native_ocr(ocr_server, timeout=0.01)
 
     assert len(ocr_server.requests) == 1
@@ -307,12 +307,11 @@ async def test_native_azure_ocr_token_provider_failure_prevents_pre_call_callbac
     ],
     ids=["oidc-assertion", "document-intelligence-model"],
 )
-def test_native_azure_ocr_rejects_unsupported_configuration_before_token_or_callbacks(
+def test_native_azure_ocr_caller_token_supports_oidc_override_and_document_intelligence(
     ocr_server: RecordingServer,
     isolated_azure_auth: None,
     configuration: dict[str, object],
 ) -> None:
-    ocr_server.expected_requests = 0
     calls: Final = []
     recorder: Final = RecordingLogger()
 
@@ -327,11 +326,20 @@ def test_native_azure_ocr_rejects_unsupported_configuration_before_token_or_call
         "callbacks": [recorder],
         **configuration,
     }
-    with pytest.raises(NotImplementedError):
-        call_native_ocr(ocr_server, **arguments)
-    assert calls == []
-    assert recorder.events == ()
-    assert ocr_server.requests == []
+    if "model" in configuration:
+        ocr_server.default_response = ResponseSpec(
+            body={
+                "status": "succeeded",
+                "analyzeResult": {"content": "native OCR response", "pages": [{"pageNumber": 1}]},
+            }
+        )
+    response: Final = call_native_ocr(ocr_server, **arguments)
+    assert isinstance(response, OCRResponse)
+    assert calls == ["token"]
+    assert recorder.names.count("log_pre_api_call") == 1
+    assert len(ocr_server.requests) == 1
+    assert ocr_server.requests[0].headers["authorization"] == "Bearer unused"
+    assert "oidc/assertion" not in ocr_server.requests[0].raw_body.decode()
 
 
 @pytest.mark.asyncio
